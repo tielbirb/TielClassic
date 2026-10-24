@@ -1,31 +1,44 @@
 name: Build TielClassic
+
 on:
-  push: { branches: [main] }
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
       mojo_ref:
         description: "MojoLauncher branch or tag to build on"
         default: v3_openjdk
-permissions: { contents: read }
+        required: false
+
+permissions:
+  contents: read
+
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
+
 env:
   MOJO_REPO: https://github.com/MojoLauncher/MojoLauncher
+
 jobs:
   apk:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+
       - name: Clone MojoLauncher (with submodules)
+        env:
+          MOJO_REF: ${{ github.event.inputs.mojo_ref || 'v3_openjdk' }}
         run: |
           git clone --depth 1 --recurse-submodules --shallow-submodules \
-            --branch "${{ inputs.mojo_ref || 'v3_openjdk' }}" "$MOJO_REPO" mojo
+            --branch "$MOJO_REF" "$MOJO_REPO" mojo
           git -C mojo log -1 --format='MojoLauncher commit %H'
+
       - name: Apply TielClassic overlay
         run: python3 scripts/apply_overlay.py mojo
+
       - name: Get LTW renderer (optional)
         uses: dawidd6/action-download-artifact@v6
         continue-on-error: true
@@ -35,23 +48,30 @@ jobs:
           workflow_conclusion: success
           name: output-aar
           path: mojo/app_mojo/libs
+
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: 17 }
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - uses: gradle/actions/setup-gradle@v4
-        with: { gradle-version: "8.14.5" }
+        with:
+          gradle-version: "8.14.5"
+
       - name: Build debug APK
         working-directory: mojo
         env:
           CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
         run: gradle :app_mojo:assembleFullDebug --stacktrace
+
       - name: Collect APK
         run: |
           mkdir -p out
           cp mojo/app_mojo/build/outputs/apk/full/debug/app_mojo-full-debug.apk out/TielClassic-debug.apk
           sha256sum out/TielClassic-debug.apk | tee out/TielClassic-debug.sha256
+
       - uses: actions/upload-artifact@v4
         with:
           name: TielClassic-debug
           path: out/*
           if-no-files-found: error
-          
