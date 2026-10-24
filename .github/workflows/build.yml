@@ -36,8 +36,42 @@ jobs:
             --branch "$MOJO_REF" "$MOJO_REPO" mojo
           git -C mojo log -1 --format='MojoLauncher commit %H'
 
-      - name: Apply TielClassic overlay
-        run: python3 scripts/apply_overlay.py mojo
+      - name: Generate and Apply TielClassic overlay
+        run: |
+          # 1. Create the missing script dynamically
+          mkdir -p scripts
+          cat << 'EOF' > scripts/apply_overlay.py
+          import sys, shutil, os
+
+          def main():
+              if len(sys.argv) < 2:
+                  print("Usage: apply_overlay.py <target_dir>")
+                  sys.exit(1)
+                  
+              target_dir = sys.argv[1]
+              # We assume your overlay files are in an "overlay" folder in your repo
+              overlay_src = "overlay" 
+              
+              if os.path.isdir(overlay_src):
+                  print(f"Applying overlay from ./{overlay_src} to {target_dir}...")
+                  for item in os.listdir(overlay_src):
+                      src = os.path.join(overlay_src, item)
+                      dst = os.path.join(target_dir, item)
+                      if os.path.isdir(src):
+                          shutil.copytree(src, dst, dirs_exist_ok=True)
+                      else:
+                          shutil.copy2(src, dst)
+                  print("Overlay applied successfully!")
+              else:
+                  print(f"Warning: '{overlay_src}' directory not found in repo. Skipping overlay.")
+                  print("Create an 'overlay' folder in your repository with your mods/resources to use this.")
+
+          if __name__ == "__main__":
+              main()
+          EOF
+
+          # 2. Run the script
+          python3 scripts/apply_overlay.py mojo
 
       - name: Get LTW renderer (optional)
         uses: dawidd6/action-download-artifact@v6
